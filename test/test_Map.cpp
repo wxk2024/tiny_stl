@@ -5,6 +5,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <set>
 #include <iostream>
+#include <RbTree.hpp>
+#include <Set.hpp>
+
 using namespace std;
 TEST_CASE("insert and find","[set]") {
     Set<int> s;
@@ -89,6 +92,7 @@ TEST_CASE("ctor","[set]") {
     s_source.insert(3);
     s_source.insert(4);
     s_destination = s_source;
+    REQUIRE(*s_source.begin()==1);
     REQUIRE(*s_destination.begin()==1);
     REQUIRE(*s_destination.end()==4);
 }
@@ -141,5 +145,40 @@ TEST_CASE("clear and assign","[set]") {
     s.assign(v.begin(),v.end());
     REQUIRE(*s.begin()==1);
     REQUIRE(*(--s.end())==3);
+    REQUIRE(*s.rbegin()==3);
+    REQUIRE(*(++s.rbegin())==2);
+    REQUIRE(!s.empty());
+    s.clear();
+    REQUIRE(s.empty());
 }
 
+TEST_CASE("multi_set","[MultiSet]") {
+    MultiSet<int> s;
+    s.insert(1);
+    s.insert(2);
+    s.insert(3);
+    s.insert(4);
+    REQUIRE(s.count(1)==1);
+    REQUIRE(s.count(2)==1);
+    REQUIRE(s.count(0)==0);
+    s.erase(1);
+    REQUIRE(s.count(1)==0);
+    REQUIRE(s.count(2)==1);
+    REQUIRE(s.count(3)==1);
+    REQUIRE(s.count(4)==1);
+    REQUIRE(s.size()==3);
+    s.emplace(1);s.emplace(1);
+    REQUIRE(s.count(1)==2);
+    REQUIRE(s.size()==5);
+}
+
+TEST_CASE("extract","[set]") {
+    Set<int> s;
+    s.insert(1);
+    s.insert(2);
+    s.insert(3);
+    s.insert(4);
+    auto it = s.extract(2);
+    REQUIRE(it.value()==2);
+    REQUIRE(s.count(2)==0);
+}
