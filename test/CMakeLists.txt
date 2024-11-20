@@ -19,3 +19,6 @@ target_link_libraries(test_SmartPtr PRIVATE Catch2::Catch2WithMain)
 
 add_executable(test_Map test_Map.cpp)
 target_link_libraries(test_Map PRIVATE Catch2::Catch2WithMain)
+
+add_executable(test_Variant test_Variant.cpp)
+target_link_libraries(test_Variant PRIVATE Catch2::Catch2WithMain)
