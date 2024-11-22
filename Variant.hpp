@@ -1,11 +1,21 @@
 //
 // Created by wxk on 2024/11/19.
 //
-/// 自定义了析构函数，就需要将 拷贝构造函数和赋值运算符函数删掉，否则会双重析构
+///
 #ifndef VARIANT_HPP
 #define VARIANT_HPP
 #include <functional>
 #include <type_traits>
+
+template <size_t I>
+struct InPlaceIndex {
+    explicit InPlaceIndex() = default;
+};
+
+// 变量模板
+template <size_t I>
+constexpr InPlaceIndex<I> inPlaceIndex;
+
 struct BadVariantAccess : std::exception {
     BadVariantAccess() = default;
 
@@ -29,6 +39,51 @@ private:
     size_t index_;
     alignas(std::max({alignof(Ts)...})) char union_[std::max({sizeof(Ts)...})];
 
+    using DestructorFunction = void(*)(char *) noexcept;
+
+    static DestructorFunction *destructors_table() noexcept {
+        static DestructorFunction function_ptrs[sizeof...(Ts)] = {
+            [] (char *union_) noexcept {
+                reinterpret_cast<Ts *>(union_)->~Ts();
+            }...
+        };
+        return function_ptrs;
+    }
+
+    using MoveConstructorFunction = void(*)(char *, char *) noexcept;
+
+    static MoveConstructorFunction *move_constructors_table() noexcept {
+        static MoveConstructorFunction function_ptrs[sizeof...(Ts)] = {
+            [] (char *union_dst, char *union_src) noexcept {
+                new (union_dst) Ts(std::move(*reinterpret_cast<Ts *>(union_src)));
+            }...
+        };
+        return function_ptrs;
+    }
+
+    using CopyAssignmentFunction = void(*)(char *, char const *) noexcept;
+
+    static CopyAssignmentFunction *copy_assigment_functions_table() noexcept {
+        static CopyAssignmentFunction function_ptrs[sizeof...(Ts)] = {
+            [] (char *union_dst, char const *union_src) noexcept {
+                *reinterpret_cast<Ts *>(union_dst) = *reinterpret_cast<Ts const*>(union_src);
+            }...
+        };
+        return function_ptrs;
+    }
+
+    using MoveAssignmentFunction = void(*)(char *, char *) noexcept;
+
+    static MoveAssignmentFunction *move_assigment_functions_table() noexcept {
+        static MoveAssignmentFunction function_ptrs[sizeof...(Ts)] = {
+            [] (char *union_dst, char *union_src) noexcept {
+                *reinterpret_cast<Ts *>(union_dst) = std::move(*reinterpret_cast<Ts *>(union_src));
+            }...
+        };
+        return function_ptrs;
+    }
+
+
     template<class Lambda>
     using VisitorFunction = std::common_type<typename std::invoke_result<Lambda, Ts &>::type...>::type(*)(
         char *, Lambda &&);
@@ -47,9 +102,34 @@ private:
 
 public:
     template<typename T, std::enable_if_t<(std::is_same_v<T, Ts> || ...), int>  = 0>
-    Variant(T value) : index_(VariantIndex<Variant, T>::value) {
+    Variant(T&& value) : index_(VariantIndex<Variant, T>::value) {
         T *p = reinterpret_cast<T *>(union_);
-        new(p) T(value);
+        new(p) T(std::forward<T>(value));
+    }
+    Variant() = default;
+    Variant(const Variant &that) = default;
+    Variant &operator=(Variant const &that) noexcept{
+        index_ = that.index_;
+        copy_assigment_functions_table()[index()](union_, that.union_);
+        return *this;
+    }
+    Variant &operator=(Variant &&that) {
+        index_ = that.index_;
+        move_assigment_functions_table()[index()](union_, that.union_);
+        return *this;
+    }
+    Variant(Variant &&that) : index_(that.index_) {
+        move_constructors_table()[index()](union_, that.union_);
+    }
+
+    ~Variant() noexcept {
+        destructors_table()[index()](union_);
+    }
+
+    template <size_t I, typename ...Args>
+    explicit Variant(InPlaceIndex<I>, Args &&...value_args) : index_(I) {
+        new (union_) typename VariantAlternative<Variant, I>::type
+            (std::forward<Args>(value_args)...);
     }
 
     template <class Lambda>
